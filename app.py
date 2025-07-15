@@ -135,19 +135,37 @@ def get_surrounding_data(idx_list, smoothed_dates, smoothed_values, window):
         })
     return rows
 
-# Peak, Trough 테이블 생성 및 출력
+# Peak, Trough 테이블 생성
 peak_data = get_surrounding_data(peak_idxs, smoothed_dates, smoothed_values, window)
 trough_data = get_surrounding_data(trough_idxs, smoothed_dates, smoothed_values, window)
 
+# Peak 테이블 출력 및 CSV 다운로드
 st.markdown("### 🔹 Peak Turning Points Details")
 if peak_data:
-    st.dataframe(pd.DataFrame(peak_data))
+    peak_df = pd.DataFrame(peak_data)
+    st.dataframe(peak_df)
+    csv_peak = peak_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Download Peak Data as CSV",
+        data=csv_peak,
+        file_name=f"peak_turning_points_{selected_maturity}.csv",
+        mime="text/csv"
+    )
 else:
     st.write("No Peak turning points detected with current parameters.")
 
+# Trough 테이블 출력 및 CSV 다운로드
 st.markdown("### 🔹 Trough Turning Points Details")
 if trough_data:
-    st.dataframe(pd.DataFrame(trough_data))
+    trough_df = pd.DataFrame(trough_data)
+    st.dataframe(trough_df)
+    csv_trough = trough_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Download Trough Data as CSV",
+        data=csv_trough,
+        file_name=f"trough_turning_points_{selected_maturity}.csv",
+        mime="text/csv"
+    )
 else:
     st.write("No Trough turning points detected with current parameters.")
 
