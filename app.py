@@ -18,6 +18,17 @@ maturity_options = {
 selected_maturity = st.sidebar.selectbox("Select Treasury Maturity", list(maturity_options.keys()))
 fred_id = maturity_options[selected_maturity]
 
+# 설명 텍스트
+st.markdown("""
+---
+### ℹ️ Parameters Description
+
+- **Chart Start / End Date**: 분석할 날짜 범위를 선택합니다  
+- **LOESS Smoothing (frac)**: 빨간 곡선을 얼마나 부드럽게 그릴지 조정합니다  
+- **Slope Threshold**: 기울기 변화가 얼마나 작아야 전환점으로 간주할지 설정합니다  
+- **Window Size**: 전환점이 진짜인지 확인하기 위해 앞뒤 며칠을 비교할지 설정합니다  
+""")
+
 # 데이터 불러오기
 @st.cache_data
 
