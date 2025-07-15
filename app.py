@@ -179,3 +179,89 @@ st.markdown("""
 - **Slope Threshold**: 기울기 변화가 얼마나 작아야 전환점으로 간주할지 설정합니다  
 - **Window Size**: 전환점이 진짜인지 확인하기 위해 앞뒤 며칠을 비교할지 설정합니다  
 """)
+
+
+# ✅ 분석용 함수: 전환점 이전 window 구간 데이터 특성 추출
+def analyze_segment(df, dates, window):
+    results = []
+    for dt in dates:
+        segment = df[(df["Date"] <= dt) & (df["Date"] > dt - pd.Timedelta(days=window))]
+        if len(segment) < 2:
+            continue
+        rates = segment["Rate"]
+        changes = rates.diff().dropna()
+        results.append({
+            "Turning Point": dt.date(),
+            "Start Date": segment["Date"].min().date(),
+            "End Date": segment["Date"].max().date(),
+            "Mean Rate": rates.mean(),
+            "Std Dev": rates.std(),
+            "Max Rate": rates.max(),
+            "Min Rate": rates.min(),
+            "Rate Change": rates.iloc[-1] - rates.iloc[0],
+            "Max Daily Change": changes.max(),
+            "Min Daily Change": changes.min(),
+        })
+    return pd.DataFrame(results)
+
+# ✅ 분석 실행
+peak_analysis_df = analyze_segment(df, slope_dates[peak_idxs], window)
+trough_analysis_df = analyze_segment(df, slope_dates[trough_idxs], window)
+
+# ✅ 결과 출력
+st.markdown("---")
+st.markdown("### 📋 Turning Point Window Analysis Summary")
+
+st.markdown("#### 🔹 Peak Region Analysis")
+if not peak_analysis_df.empty:
+    st.dataframe(peak_analysis_df)
+    st.download_button("⬇️ Download Peak Region Stats", data=peak_analysis_df.to_csv(index=False).encode('utf-8'),
+                       file_name=f"peak_region_analysis_{selected_maturity}.csv", mime='text/csv')
+else:
+    st.warning("No valid Peak regions found.")
+
+st.markdown("#### 🔹 Trough Region Analysis")
+if not trough_analysis_df.empty:
+    st.dataframe(trough_analysis_df)
+    st.download_button("⬇️ Download Trough Region Stats", data=trough_analysis_df.to_csv(index=False).encode('utf-8'),
+                       file_name=f"trough_region_analysis_{selected_maturity}.csv", mime='text/csv')
+else:
+    st.warning("No valid Trough regions found.")
+
+# ✅ 통계적 비교
+from scipy.stats import ttest_ind
+st.markdown("---")
+st.markdown("### 🔍 Statistical Comparison: Peak vs Trough Region")
+
+if not peak_analysis_df.empty and not trough_analysis_df.empty:
+    stat, pval = ttest_ind(
+        peak_analysis_df["Rate Change"].dropna(),
+        trough_analysis_df["Rate Change"].dropna(),
+        equal_var=False
+    )
+
+    st.write(f"**Average Rate Change - Peak:** {peak_analysis_df['Rate Change'].mean():.4f}")
+    st.write(f"**Average Rate Change - Trough:** {trough_analysis_df['Rate Change'].mean():.4f}")
+    st.write(f"**T-test p-value:** {pval:.4f}")
+
+    if pval < 0.05:
+        st.success("✅ Statistically significant difference between peak and trough regions.")
+    else:
+        st.info("ℹ️ No statistically significant difference.")
+else:
+    st.info("⚠️ Not enough data to perform statistical comparison.")
+
+# ✅ 시각화 (KDE Plot)
+import seaborn as sns
+st.markdown("### 📊 Distribution of Rate Changes")
+
+if not peak_analysis_df.empty and not trough_analysis_df.empty:
+    fig, ax = plt.subplots()
+    sns.kdeplot(peak_analysis_df["Rate Change"], label="Peak Region", fill=True, ax=ax)
+    sns.kdeplot(trough_analysis_df["Rate Change"], label="Trough Region", fill=True, ax=ax)
+    ax.set_xlabel("Rate Change over Preceding Window")
+    ax.set_title("Rate Change Distributions")
+    ax.legend()
+    st.pyplot(fig)
+else:
+    st.info("Not enough data for distribution plot.")
