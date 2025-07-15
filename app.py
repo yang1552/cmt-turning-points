@@ -5,6 +5,16 @@ import numpy as np
 from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
 
+# 만기 선택: FRED 코드 매핑
+maturity_options = {
+    "2Y": "DGS2",
+    "5Y": "DGS5",
+    "10Y": "DGS10",
+    "30Y": "DGS30"
+}
+
+selected_maturity = st.sidebar.selectbox("Select Treasury Maturity", list(maturity_options.keys()))
+fred_id = maturity_options[selected_maturity]
 # 데이터 불러오기 함수
 @st.cache_data
 def load_data(fred_id):
@@ -28,16 +38,7 @@ default_end = max_date
 # Sidebar - 사용자 설정 입력
 st.sidebar.header("🔧 Parameters")
 
-# 만기 선택: FRED 코드 매핑
-maturity_options = {
-    "2Y": "DGS2",
-    "5Y": "DGS5",
-    "10Y": "DGS10",
-    "30Y": "DGS30"
-}
 
-selected_maturity = st.sidebar.selectbox("Select Treasury Maturity", list(maturity_options.keys()))
-fred_id = maturity_options[selected_maturity]
 
 # 날짜 선택
 start_date = st.sidebar.date_input(
