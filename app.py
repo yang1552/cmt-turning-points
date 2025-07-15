@@ -6,6 +6,7 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import ttest_ind
+from sklearn.metrics import pairwise_distances
 
 # ---- Sidebar 설정 ----
 maturity_options = {
@@ -176,39 +177,33 @@ sns.kdeplot(control_df_stats["Total Change"], label="Control", fill=True, ax=ax2
 ax2.legend()
 st.pyplot(fig2)
 
+# 최신 구간 분석 및 비교
+def get_mean_distance(target_df, ref_df):
+    features = ["Mean Change", "Std Dev", "Total Change", "Max Change", "Min Change"]
+    distances = pairwise_distances(target_df[features], ref_df[features], metric="euclidean")
+    return np.mean(distances, axis=1)
 
-from sklearn.metrics import pairwise_distances
-
-st.markdown("### 🔍 Latest Period Comparison")
-
-# 최신 기간 선택
-latest_seg = df.iloc[-window:].copy()
-latest_diff = latest_seg["Rate"].diff().dropna()
-if len(latest_diff) >= 2:
-    latest_summary = pd.DataFrame([{
-        "Mean Change": latest_diff.mean(),
-        "Std Dev": latest_diff.std(),
-        "Total Change": latest_seg["Rate"].iloc[-1] - latest_seg["Rate"].iloc[0],
-        "Max Change": latest_diff.max(),
-        "Min Change": latest_diff.min()
-    }])
-
-    def get_mean_distance(latest_df, ref_df):
-        features = ["Mean Change", "Std Dev", "Total Change", "Max Change", "Min Change"]
-        if ref_df.empty:
-            return np.nan
-        distances = pairwise_distances(latest_df[features], ref_df[features], metric="euclidean")
-        return distances.mean()
-
-    mean_dists = {
-        "Peak": get_mean_distance(latest_summary, peak_df),
-        "Trough": get_mean_distance(latest_summary, trough_df),
-        "Control": get_mean_distance(latest_summary, control_df_stats)
-    }
-
-    closest_group = min(mean_dists, key=mean_dists.get)
-    st.write("📈 **Latest period is most similar to:**", f"**{closest_group}**")
-    st.write("🔢 Euclidean distances to each group:")
-    st.json({k: round(v, 6) for k, v in mean_dists.items()})
+latest = df.tail(window).copy()
+if mode == "diff":
+    changes = latest["Rate"].diff().dropna()
+    total = latest["Rate"].iloc[-1] - latest["Rate"].iloc[0]
 else:
-    st.warning("Not enough data to compute latest comparison.")
+    changes = latest["Rate"].pct_change().dropna()
+    total = (latest["Rate"].iloc[-1] - latest["Rate"].iloc[0]) / latest["Rate"].iloc[0]
+
+latest_summary = pd.DataFrame([{
+    "Mean Change": changes.mean(),
+    "Std Dev": changes.std(),
+    "Total Change": total,
+    "Max Change": changes.max(),
+    "Min Change": changes.min()
+}])
+
+peak_dist = get_mean_distance(latest_summary, peak_df)
+trough_dist = get_mean_distance(latest_summary, trough_df)
+control_dist = get_mean_distance(latest_summary, control_df_stats)
+
+best_match = np.argmin([peak_dist.mean(), trough_dist.mean(), control_dist.mean()])
+best_label = ["Peak", "Trough", "Control"][best_match]
+st.markdown("### 📌 Similarity of Most Recent Period")
+st.write("The most recent period is most similar to:", f"**{best_label}**")
