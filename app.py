@@ -97,7 +97,8 @@ st.title(f"📈 {selected_maturity} CMT Rate Turning Point Analyzer")
 
 # 차트 출력
 fig, ax = plt.subplots(figsize=(14, 6))
-ax.plot(df['Date'], df['Rate'], label='Raw 10Y Rate', alpha=0.4)
+ax.plot(df['Date'], df['Rate'], label=f'Raw {selected_maturity} Rate', alpha=0.4)
+ax.set_title(f"{selected_maturity} CMT Rate: Turning Points (LOESS)")
 ax.plot(smoothed_dates, smoothed_values, color='red', label='LOESS Smoothed')
 ax.scatter(slope_dates[peak_idxs], smoothed_values[1:][peak_idxs], color='blue', label='Peaks')
 ax.scatter(slope_dates[trough_idxs], smoothed_values[1:][trough_idxs], color='green', label='Troughs')
