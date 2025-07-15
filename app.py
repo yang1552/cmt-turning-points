@@ -6,6 +6,7 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import ttest_ind
+from sklearn.metrics import pairwise_distances
 
 # ---- Sidebar 설정 ----
 maturity_options = {
