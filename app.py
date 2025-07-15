@@ -180,8 +180,18 @@ st.pyplot(fig2)
 # 최신 구간 분석 및 비교
 def get_mean_distance(target_df, ref_df):
     features = ["Mean Change", "Std Dev", "Total Change", "Max Change", "Min Change"]
-    distances = pairwise_distances(target_df[features], ref_df[features], metric="euclidean")
-    return np.mean(distances, axis=1)
+    
+    # NaN 제거
+    target_df_clean = target_df[features].dropna()
+    ref_df_clean = ref_df[features].dropna()
+
+    if target_df_clean.empty or ref_df_clean.empty:
+        return np.nan
+
+    distances = pairwise_distances(target_df_clean, ref_df_clean, metric="euclidean")
+    return distances.mean()
+
+
 
 latest = df.tail(window).copy()
 if mode == "diff":
