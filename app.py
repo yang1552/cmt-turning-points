@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
+import datetime
 
 # 만기 선택: FRED 코드 매핑
 maturity_options = {
@@ -117,3 +118,49 @@ st.markdown("""
 - **Slope Threshold**: 기울기 변화가 얼마나 작아야 전환점으로 간주할지 설정합니다  
 - **Window Size**: 전환점이 진짜인지 확인하기 위해 앞뒤 며칠을 비교할지 설정합니다  
 """)
+
+def get_surrounding_data(idx_list, smoothed_dates, smoothed_values, window=30):
+    rows = []
+    n = len(smoothed_values)
+    for idx in idx_list:
+        # 현재 전환점 날짜 및 값
+        center_date = smoothed_dates[idx].date()
+        center_value = smoothed_values[idx]
+
+        # 30개 이전과 이후 인덱스 계산
+        prev_idx = max(0, idx - window)
+        next_idx = min(n - 1, idx + window)
+
+        prev_date = smoothed_dates[prev_idx].date()
+        prev_value = smoothed_values[prev_idx]
+
+        next_date = smoothed_dates[next_idx].date()
+        next_value = smoothed_values[next_idx]
+
+        rows.append({
+            "Turning Point Date": center_date,
+            "Turning Point Rate": center_value,
+            f"{window} Days Before Date": prev_date,
+            f"{window} Days Before Rate": prev_value,
+            f"{window} Days After Date": next_date,
+            f"{window} Days After Rate": next_value
+        })
+    return rows
+
+# Peak 테이블 생성
+peak_data = get_surrounding_data(peak_idxs, smoothed_dates, smoothed_values, window=30)
+# Through 테이블 생성
+trough_data = get_surrounding_data(trough_idxs, smoothed_dates, smoothed_values, window=30)
+
+# Streamlit 출력
+st.markdown("### 🔹 Peak Turning Points Details")
+if peak_data:
+    st.dataframe(pd.DataFrame(peak_data))
+else:
+    st.write("No Peak turning points detected with current parameters.")
+
+st.markdown("### 🔹 Trough Turning Points Details")
+if trough_data:
+    st.dataframe(pd.DataFrame(trough_data))
+else:
+    st.write("No Trough turning points detected with current parameters.")
