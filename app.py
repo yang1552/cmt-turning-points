@@ -175,3 +175,40 @@ sns.kdeplot(trough_df["Total Change"], label="Trough", fill=True, ax=ax2)
 sns.kdeplot(control_df_stats["Total Change"], label="Control", fill=True, ax=ax2)
 ax2.legend()
 st.pyplot(fig2)
+
+
+from sklearn.metrics import pairwise_distances
+
+st.markdown("### 🔍 Latest Period Comparison")
+
+# 최신 기간 선택
+latest_seg = df.iloc[-window:].copy()
+latest_diff = latest_seg["Rate"].diff().dropna()
+if len(latest_diff) >= 2:
+    latest_summary = pd.DataFrame([{
+        "Mean Change": latest_diff.mean(),
+        "Std Dev": latest_diff.std(),
+        "Total Change": latest_seg["Rate"].iloc[-1] - latest_seg["Rate"].iloc[0],
+        "Max Change": latest_diff.max(),
+        "Min Change": latest_diff.min()
+    }])
+
+    def get_mean_distance(latest_df, ref_df):
+        features = ["Mean Change", "Std Dev", "Total Change", "Max Change", "Min Change"]
+        if ref_df.empty:
+            return np.nan
+        distances = pairwise_distances(latest_df[features], ref_df[features], metric="euclidean")
+        return distances.mean()
+
+    mean_dists = {
+        "Peak": get_mean_distance(latest_summary, peak_df),
+        "Trough": get_mean_distance(latest_summary, trough_df),
+        "Control": get_mean_distance(latest_summary, control_df_stats)
+    }
+
+    closest_group = min(mean_dists, key=mean_dists.get)
+    st.write("📈 **Latest period is most similar to:**", f"**{closest_group}**")
+    st.write("🔢 Euclidean distances to each group:")
+    st.json({k: round(v, 6) for k, v in mean_dists.items()})
+else:
+    st.warning("Not enough data to compute latest comparison.")
