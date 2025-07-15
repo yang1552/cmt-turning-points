@@ -135,37 +135,19 @@ def get_surrounding_data(idx_list, smoothed_dates, smoothed_values, window):
         })
     return rows
 
-# Peak, Trough 테이블 생성
+# Peak, Trough 테이블 생성 및 출력
 peak_data = get_surrounding_data(peak_idxs, smoothed_dates, smoothed_values, window)
 trough_data = get_surrounding_data(trough_idxs, smoothed_dates, smoothed_values, window)
 
-# Peak 테이블 출력 및 CSV 다운로드
 st.markdown("### 🔹 Peak Turning Points Details")
 if peak_data:
-    peak_df = pd.DataFrame(peak_data)
-    st.dataframe(peak_df)
-    csv_peak = peak_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download Peak Data as CSV",
-        data=csv_peak,
-        file_name=f"peak_turning_points_{selected_maturity}.csv",
-        mime="text/csv"
-    )
+    st.dataframe(pd.DataFrame(peak_data))
 else:
     st.write("No Peak turning points detected with current parameters.")
 
-# Trough 테이블 출력 및 CSV 다운로드
 st.markdown("### 🔹 Trough Turning Points Details")
 if trough_data:
-    trough_df = pd.DataFrame(trough_data)
-    st.dataframe(trough_df)
-    csv_trough = trough_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download Trough Data as CSV",
-        data=csv_trough,
-        file_name=f"trough_turning_points_{selected_maturity}.csv",
-        mime="text/csv"
-    )
+    st.dataframe(pd.DataFrame(trough_data))
 else:
     st.write("No Trough turning points detected with current parameters.")
 
@@ -179,155 +161,3 @@ st.markdown("""
 - **Slope Threshold**: 기울기 변화가 얼마나 작아야 전환점으로 간주할지 설정합니다  
 - **Window Size**: 전환점이 진짜인지 확인하기 위해 앞뒤 며칠을 비교할지 설정합니다  
 """)
-
-
-# ✅ 분석용 함수: 전환점 이전 window 구간 데이터 특성 추출
-def analyze_segment(df, dates, window):
-    results = []
-    for dt in dates:
-        segment = df[(df["Date"] <= dt) & (df["Date"] > dt - pd.Timedelta(days=window))]
-        if len(segment) < 2:
-            continue
-        rates = segment["Rate"]
-        changes = rates.diff().dropna()
-        results.append({
-            "Turning Point": dt.date(),
-            "Start Date": segment["Date"].min().date(),
-            "End Date": segment["Date"].max().date(),
-            "Mean Rate": rates.mean(),
-            "Std Dev": rates.std(),
-            "Max Rate": rates.max(),
-            "Min Rate": rates.min(),
-            "Rate Change": rates.iloc[-1] - rates.iloc[0],
-            "Max Daily Change": changes.max(),
-            "Min Daily Change": changes.min(),
-        })
-    return pd.DataFrame(results)
-
-# ✅ 분석 실행
-peak_analysis_df = analyze_segment(df, slope_dates[peak_idxs], window)
-trough_analysis_df = analyze_segment(df, slope_dates[trough_idxs], window)
-
-# ✅ 결과 출력
-st.markdown("---")
-st.markdown("### 📋 Turning Point Window Analysis Summary")
-
-st.markdown("#### 🔹 Peak Region Analysis")
-if not peak_analysis_df.empty:
-    st.dataframe(peak_analysis_df)
-    st.download_button("⬇️ Download Peak Region Stats", data=peak_analysis_df.to_csv(index=False).encode('utf-8'),
-                       file_name=f"peak_region_analysis_{selected_maturity}.csv", mime='text/csv')
-else:
-    st.warning("No valid Peak regions found.")
-
-st.markdown("#### 🔹 Trough Region Analysis")
-if not trough_analysis_df.empty:
-    st.dataframe(trough_analysis_df)
-    st.download_button("⬇️ Download Trough Region Stats", data=trough_analysis_df.to_csv(index=False).encode('utf-8'),
-                       file_name=f"trough_region_analysis_{selected_maturity}.csv", mime='text/csv')
-else:
-    st.warning("No valid Trough regions found.")
-
-# ✅ 통계적 비교
-from scipy.stats import ttest_ind
-st.markdown("---")
-st.markdown("### 🔍 Statistical Comparison: Peak vs Trough Region")
-
-if not peak_analysis_df.empty and not trough_analysis_df.empty:
-    stat, pval = ttest_ind(
-        peak_analysis_df["Rate Change"].dropna(),
-        trough_analysis_df["Rate Change"].dropna(),
-        equal_var=False
-    )
-
-    st.write(f"**Average Rate Change - Peak:** {peak_analysis_df['Rate Change'].mean():.4f}")
-    st.write(f"**Average Rate Change - Trough:** {trough_analysis_df['Rate Change'].mean():.4f}")
-    st.write(f"**T-test p-value:** {pval:.4f}")
-
-    if pval < 0.05:
-        st.success("✅ Statistically significant difference between peak and trough regions.")
-    else:
-        st.info("ℹ️ No statistically significant difference.")
-else:
-    st.info("⚠️ Not enough data to perform statistical comparison.")
-
-# ✅ 시각화 (KDE Plot)
-import seaborn as sns
-st.markdown("### 📊 Distribution of Rate Changes")
-
-if not peak_analysis_df.empty and not trough_analysis_df.empty:
-    fig, ax = plt.subplots()
-    sns.kdeplot(peak_analysis_df["Rate Change"], label="Peak Region", fill=True, ax=ax)
-    sns.kdeplot(trough_analysis_df["Rate Change"], label="Trough Region", fill=True, ax=ax)
-    ax.set_xlabel("Rate Change over Preceding Window")
-    ax.set_title("Rate Change Distributions")
-    ax.legend()
-    st.pyplot(fig)
-else:
-    st.info("Not enough data for distribution plot.")
-
-# ✅ 제외할 날짜 구간 집계 (peak/through 전환점과 그 이전 window일)
-exclude_dates = set()
-for idx in peak_idxs + trough_idxs:
-    ref_date = slope_dates[idx]
-    exclude_range = pd.date_range(ref_date - pd.Timedelta(days=window), ref_date)
-    exclude_dates.update(exclude_range.date)
-
-# ✅ 비전환 구간 필터링
-rolling_base_df = df[~df["Date"].dt.date.isin(exclude_dates)].copy()
-rolling_base_df.reset_index(drop=True, inplace=True)
-
-# ✅ rolling analysis: window 단위 평균/변동량 등 계산
-rolling_stats = []
-for i in range(len(rolling_base_df) - window):
-    seg = rolling_base_df.iloc[i:i+window]
-    changes = seg["Rate"].diff().dropna()
-    rolling_stats.append({
-        "Window Start": seg["Date"].iloc[0].date(),
-        "Window End": seg["Date"].iloc[-1].date(),
-        "Mean Rate": seg["Rate"].mean(),
-        "Std Dev": seg["Rate"].std(),
-        "Max Rate": seg["Rate"].max(),
-        "Min Rate": seg["Rate"].min(),
-        "Rate Change": seg["Rate"].iloc[-1] - seg["Rate"].iloc[0],
-        "Max Daily Change": changes.max(),
-        "Min Daily Change": changes.min()
-    })
-
-rolling_df = pd.DataFrame(rolling_stats)
-
-# ✅ 출력
-st.markdown("---")
-st.markdown("### 📋 Control Period (Non-Turning Points) Analysis")
-
-if not rolling_df.empty:
-    st.dataframe(rolling_df)
-    st.download_button("⬇️ Download Rolling Control Data", data=rolling_df.to_csv(index=False).encode('utf-8'),
-                       file_name=f"control_period_rolling_stats_{selected_maturity}.csv", mime='text/csv')
-else:
-    st.warning("No valid control periods found for given window setting.")
-
-# 통계 비교 (예: 평균 금리 변화 비교)
-from scipy.stats import ttest_ind
-
-st.markdown("### 🔍 Statistical Comparison with Control Period")
-
-def compare_groups(label, turning_df):
-    if not turning_df.empty and not rolling_df.empty:
-        t_stat, p_val = ttest_ind(
-            turning_df["Rate Change"].dropna(),
-            rolling_df["Rate Change"].dropna(),
-            equal_var=False
-        )
-        st.write(f"**{label} vs Control**:")
-        st.write(f"- Mean: {turning_df['Rate Change'].mean():.4f} vs {rolling_df['Rate Change'].mean():.4f}")
-        st.write(f"- T-test p-value: {p_val:.4f}")
-        if p_val < 0.05:
-            st.success("✅ Statistically significant difference.")
-        else:
-            st.info("ℹ️ No statistically significant difference.")
-    else:
-        st.warning(f"{label} or control data missing.")
-
-compare_groups("Peak Region", peak_analysis_df)
-compare_groups("Trough Region", trough_analysis_df)
