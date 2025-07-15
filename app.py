@@ -1,9 +1,11 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
 from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
 
+# 데이터 불러오기 함수
 @st.cache_data
 def load_data():
     url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10"
@@ -11,31 +13,61 @@ def load_data():
     df = df.rename(columns={"observation_date": "Date", "DGS10": "Rate"})
     df["Rate"] = pd.to_numeric(df["Rate"], errors="coerce")
     df.dropna(inplace=True)
-    df = df[df["Date"] >= "2015-01-01"]
     df.reset_index(drop=True, inplace=True)
     return df
 
+# 데이터 불러오기
 df = load_data()
 
-st.title("🧭 10Y CMT Rate Turning Point Analyzer")
+# 날짜 선택 범위 설정
+min_date = df["Date"].min()
+max_date = df["Date"].max()
+default_start = pd.to_datetime("2015-01-01")
+default_end = max_date
 
-# Sidebar for parameters
+# Sidebar - 사용자 설정 입력
 st.sidebar.header("🔧 Parameters")
+
+start_date = st.sidebar.date_input(
+    "Select chart start date",
+    value=default_start,
+    min_value=min_date,
+    max_value=max_date
+)
+
+end_date = st.sidebar.date_input(
+    "Select chart end date",
+    value=default_end,
+    min_value=min_date,
+    max_value=max_date
+)
+
+# 시작일과 종료일의 유효성 체크
+if start_date > end_date:
+    st.error("🚫 End date must be after start date.")
+    st.stop()
+
+# 사용자 입력 파라미터
 frac = st.sidebar.slider("LOESS Smoothing (frac)", 0.01, 0.2, 0.05, step=0.005)
 threshold = st.sidebar.slider("Slope Threshold", 0.0001, 0.02, 0.005, step=0.0005)
-window = st.sidebar.slider("Window size (days)", 5, 90, 30, step=5)
+window = st.sidebar.slider("Turning Point Window (days)", 5, 90, 30, step=5)
 
-# LOESS smoothing
+# 분석용 데이터 필터링
+df = df[(df["Date"] >= pd.to_datetime(start_date)) & (df["Date"] <= pd.to_datetime(end_date))].copy()
+
+# LOESS 스무딩
 smoothed = lowess(df['Rate'], df['Date'], frac=frac)
 smoothed_dates = pd.to_datetime(smoothed[:, 0])
 smoothed_values = smoothed[:, 1]
 
-# Slope calculation
+# 기울기 계산
 slopes = np.diff(smoothed_values)
 slope_dates = smoothed_dates[1:]
+
+# 전환점 후보: 기울기 절댓값이 threshold보다 작은 지점
 candidate_idxs = np.where((np.abs(slopes) > 0) & (np.abs(slopes) < threshold))[0]
 
-# Peak & Trough Detection
+# 전환점 검출 (전/후 window 기간 내에서 최댓값 → Peak, 최솟값 → Trough)
 peak_idxs, trough_idxs = [], []
 for idx in candidate_idxs:
     start = max(0, idx - window)
@@ -47,7 +79,10 @@ for idx in candidate_idxs:
     elif value == np.min(segment):
         trough_idxs.append(idx)
 
-# Plot
+# Streamlit 메인 타이틀
+st.title("📈 10Y CMT Rate Turning Point Analyzer")
+
+# 차트 출력
 fig, ax = plt.subplots(figsize=(14, 6))
 ax.plot(df['Date'], df['Rate'], label='Raw 10Y Rate', alpha=0.4)
 ax.plot(smoothed_dates, smoothed_values, color='red', label='LOESS Smoothed')
@@ -58,11 +93,13 @@ ax.legend()
 ax.grid(True)
 st.pyplot(fig)
 
+# 설명 텍스트
 st.markdown("""
 ---
-🔎 **Parameter Descriptions:**
+### ℹ️ Parameters Description
 
-- **LOESS frac**: Controls how smooth the red line is (higher = smoother)
-- **Slope Threshold**: Lower = only flatter areas become turning points
-- **Window size**: Number of days before/after to confirm local peak/trough
+- **Chart Start / End Date**: 분석할 날짜 범위를 선택합니다  
+- **LOESS Smoothing (frac)**: 빨간 곡선을 얼마나 부드럽게 그릴지 조정합니다  
+- **Slope Threshold**: 기울기 변화가 얼마나 작아야 전환점으로 간주할지 설정합니다  
+- **Window Size**: 전환점이 진짜인지 확인하기 위해 앞뒤 며칠을 비교할지 설정합니다  
 """)
