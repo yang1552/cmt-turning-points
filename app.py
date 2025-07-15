@@ -54,7 +54,7 @@ if start_date > end_date:
 
 # 파라미터
 frac = st.sidebar.slider("LOESS Smoothing (frac)", 0.001, 0.2, 0.05, step=0.005)
-threshold = st.sidebar.slider("Slope Threshold", 0.0001, 0.02, 0.005, step=0.0005)
+threshold = st.sidebar.slider("Slope Threshold", min_value=0.0001, max_value=0.02, value=0.005, step=0.0005, format="%.4f")
 window = st.sidebar.slider("Turning Point Window (days)", 5, 90, 30, step=5)
 
 # 분석 범위 제한
