@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 from statsmodels.nonparametric.smoothers_lowess import lowess
 import matplotlib.pyplot as plt
-import datetime
 
 # 만기 선택: FRED 코드 매핑
 maturity_options = {
@@ -14,8 +13,11 @@ maturity_options = {
     "30Y": "DGS30"
 }
 
+st.sidebar.header("🔧 Parameters")
+
 selected_maturity = st.sidebar.selectbox("Select Treasury Maturity", list(maturity_options.keys()))
 fred_id = maturity_options[selected_maturity]
+
 # 데이터 불러오기 함수
 @st.cache_data
 def load_data(fred_id):
@@ -35,11 +37,6 @@ min_date = df["Date"].min()
 max_date = df["Date"].max()
 default_start = pd.to_datetime("2015-01-01")
 default_end = max_date
-
-# Sidebar - 사용자 설정 입력
-st.sidebar.header("🔧 Parameters")
-
-
 
 # 날짜 선택
 start_date = st.sidebar.date_input(
@@ -74,6 +71,10 @@ smoothed = lowess(df['Rate'], df['Date'], frac=frac)
 smoothed_dates = pd.to_datetime(smoothed[:, 0])
 smoothed_values = smoothed[:, 1]
 
+if len(smoothed_values) < 2:
+    st.error("⚠️ Not enough data to calculate slope. Try a wider date range or different maturity.")
+    st.stop()
+
 # 기울기 계산
 slopes = np.diff(smoothed_values)
 slope_dates = smoothed_dates[1:]
@@ -99,26 +100,15 @@ st.title(f"📈 {selected_maturity} CMT Rate Turning Point Analyzer")
 # 차트 출력
 fig, ax = plt.subplots(figsize=(14, 6))
 ax.plot(df['Date'], df['Rate'], label=f'Raw {selected_maturity} Rate', alpha=0.4)
-ax.set_title(f"{selected_maturity} CMT Rate: Turning Points (LOESS)")
 ax.plot(smoothed_dates, smoothed_values, color='red', label='LOESS Smoothed')
 ax.scatter(slope_dates[peak_idxs], smoothed_values[1:][peak_idxs], color='blue', label='Peaks')
 ax.scatter(slope_dates[trough_idxs], smoothed_values[1:][trough_idxs], color='green', label='Troughs')
-ax.set_title("10Y CMT Rate: Turning Points (LOESS)")
+ax.set_title(f"{selected_maturity} CMT Rate: Turning Points (LOESS)")
 ax.legend()
 ax.grid(True)
 st.pyplot(fig)
 
-# 설명 텍스트
-st.markdown("""
----
-### ℹ️ Parameters Description
-
-- **Chart Start / End Date**: 분석할 날짜 범위를 선택합니다  
-- **LOESS Smoothing (frac)**: 빨간 곡선을 얼마나 부드럽게 그릴지 조정합니다  
-- **Slope Threshold**: 기울기 변화가 얼마나 작아야 전환점으로 간주할지 설정합니다  
-- **Window Size**: 전환점이 진짜인지 확인하기 위해 앞뒤 며칠을 비교할지 설정합니다  
-""")
-
+# 전환점 주변 데이터 테이블 함수
 def get_surrounding_data(idx_list, smoothed_dates, smoothed_values, window):
     rows = []
     n = len(smoothed_values)
@@ -145,15 +135,10 @@ def get_surrounding_data(idx_list, smoothed_dates, smoothed_values, window):
         })
     return rows
 
-# Peak, Trough 데이터 생성 시 window 슬라이더 값 전달
+# Peak, Trough 테이블 생성 및 출력
 peak_data = get_surrounding_data(peak_idxs, smoothed_dates, smoothed_values, window)
 trough_data = get_surrounding_data(trough_idxs, smoothed_dates, smoothed_values, window)
-# Peak 테이블 생성
-peak_data = get_surrounding_data(peak_idxs, smoothed_dates, smoothed_values, window=30)
-# Through 테이블 생성
-trough_data = get_surrounding_data(trough_idxs, smoothed_dates, smoothed_values, window=30)
 
-# Streamlit 출력
 st.markdown("### 🔹 Peak Turning Points Details")
 if peak_data:
     st.dataframe(pd.DataFrame(peak_data))
@@ -165,3 +150,14 @@ if trough_data:
     st.dataframe(pd.DataFrame(trough_data))
 else:
     st.write("No Trough turning points detected with current parameters.")
+
+# 설명 텍스트
+st.markdown("""
+---
+### ℹ️ Parameters Description
+
+- **Chart Start / End Date**: 분석할 날짜 범위를 선택합니다  
+- **LOESS Smoothing (frac)**: 빨간 곡선을 얼마나 부드럽게 그릴지 조정합니다  
+- **Slope Threshold**: 기울기 변화가 얼마나 작아야 전환점으로 간주할지 설정합니다  
+- **Window Size**: 전환점이 진짜인지 확인하기 위해 앞뒤 며칠을 비교할지 설정합니다  
+""")
