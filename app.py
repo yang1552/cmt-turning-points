@@ -265,3 +265,69 @@ if not peak_analysis_df.empty and not trough_analysis_df.empty:
     st.pyplot(fig)
 else:
     st.info("Not enough data for distribution plot.")
+
+# ✅ 제외할 날짜 구간 집계 (peak/through 전환점과 그 이전 window일)
+exclude_dates = set()
+for idx in peak_idxs + trough_idxs:
+    ref_date = slope_dates[idx]
+    exclude_range = pd.date_range(ref_date - pd.Timedelta(days=window), ref_date)
+    exclude_dates.update(exclude_range.date)
+
+# ✅ 비전환 구간 필터링
+rolling_base_df = df[~df["Date"].dt.date.isin(exclude_dates)].copy()
+rolling_base_df.reset_index(drop=True, inplace=True)
+
+# ✅ rolling analysis: window 단위 평균/변동량 등 계산
+rolling_stats = []
+for i in range(len(rolling_base_df) - window):
+    seg = rolling_base_df.iloc[i:i+window]
+    changes = seg["Rate"].diff().dropna()
+    rolling_stats.append({
+        "Window Start": seg["Date"].iloc[0].date(),
+        "Window End": seg["Date"].iloc[-1].date(),
+        "Mean Rate": seg["Rate"].mean(),
+        "Std Dev": seg["Rate"].std(),
+        "Max Rate": seg["Rate"].max(),
+        "Min Rate": seg["Rate"].min(),
+        "Rate Change": seg["Rate"].iloc[-1] - seg["Rate"].iloc[0],
+        "Max Daily Change": changes.max(),
+        "Min Daily Change": changes.min()
+    })
+
+rolling_df = pd.DataFrame(rolling_stats)
+
+# ✅ 출력
+st.markdown("---")
+st.markdown("### 📋 Control Period (Non-Turning Points) Analysis")
+
+if not rolling_df.empty:
+    st.dataframe(rolling_df)
+    st.download_button("⬇️ Download Rolling Control Data", data=rolling_df.to_csv(index=False).encode('utf-8'),
+                       file_name=f"control_period_rolling_stats_{selected_maturity}.csv", mime='text/csv')
+else:
+    st.warning("No valid control periods found for given window setting.")
+
+# 통계 비교 (예: 평균 금리 변화 비교)
+from scipy.stats import ttest_ind
+
+st.markdown("### 🔍 Statistical Comparison with Control Period")
+
+def compare_groups(label, turning_df):
+    if not turning_df.empty and not rolling_df.empty:
+        t_stat, p_val = ttest_ind(
+            turning_df["Rate Change"].dropna(),
+            rolling_df["Rate Change"].dropna(),
+            equal_var=False
+        )
+        st.write(f"**{label} vs Control**:")
+        st.write(f"- Mean: {turning_df['Rate Change'].mean():.4f} vs {rolling_df['Rate Change'].mean():.4f}")
+        st.write(f"- T-test p-value: {p_val:.4f}")
+        if p_val < 0.05:
+            st.success("✅ Statistically significant difference.")
+        else:
+            st.info("ℹ️ No statistically significant difference.")
+    else:
+        st.warning(f"{label} or control data missing.")
+
+compare_groups("Peak Region", peak_analysis_df)
+compare_groups("Trough Region", trough_analysis_df)
