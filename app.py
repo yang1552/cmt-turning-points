@@ -7,17 +7,17 @@ import matplotlib.pyplot as plt
 
 # 데이터 불러오기 함수
 @st.cache_data
-def load_data():
-    url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10"
+def load_data(fred_id):
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={fred_id}"
     df = pd.read_csv(url, parse_dates=["observation_date"])
-    df = df.rename(columns={"observation_date": "Date", "DGS10": "Rate"})
+    df = df.rename(columns={"observation_date": "Date", fred_id: "Rate"})
     df["Rate"] = pd.to_numeric(df["Rate"], errors="coerce")
     df.dropna(inplace=True)
     df.reset_index(drop=True, inplace=True)
     return df
 
 # 데이터 불러오기
-df = load_data()
+df = load_data(fred_id)
 
 # 날짜 선택 범위 설정
 min_date = df["Date"].min()
@@ -28,6 +28,18 @@ default_end = max_date
 # Sidebar - 사용자 설정 입력
 st.sidebar.header("🔧 Parameters")
 
+# 만기 선택: FRED 코드 매핑
+maturity_options = {
+    "2Y": "DGS2",
+    "5Y": "DGS5",
+    "10Y": "DGS10",
+    "30Y": "DGS30"
+}
+
+selected_maturity = st.sidebar.selectbox("Select Treasury Maturity", list(maturity_options.keys()))
+fred_id = maturity_options[selected_maturity]
+
+# 날짜 선택
 start_date = st.sidebar.date_input(
     "Select chart start date",
     value=default_start,
@@ -80,7 +92,7 @@ for idx in candidate_idxs:
         trough_idxs.append(idx)
 
 # Streamlit 메인 타이틀
-st.title("📈 10Y CMT Rate Turning Point Analyzer")
+st.title(f"📈 {selected_maturity} CMT Rate Turning Point Analyzer")
 
 # 차트 출력
 fig, ax = plt.subplots(figsize=(14, 6))
