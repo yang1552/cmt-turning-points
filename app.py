@@ -30,7 +30,7 @@ st.markdown("""
 - **Window Size**: 전환점이 진짜인지 확인하기 위해 앞뒤 며칠을 비교할지 설정합니다  
 """)
 
-# 데이터 불러오기
+# 테레리 데이터 로드
 @st.cache_data
 
 def load_data(fred_id):
@@ -53,15 +53,17 @@ end_date = st.sidebar.date_input("End Date", value=max_date, min_value=min_date,
 if start_date > end_date:
     st.stop()
 
-# 파라미터
 frac = st.sidebar.slider("LOESS Smoothing (frac)", 0.001, 0.2, 0.05, step=0.005)
 threshold = st.sidebar.slider("Slope Threshold", min_value=0.0001, max_value=0.02, value=0.005, step=0.0005, format="%.4f")
 window = st.sidebar.slider("Turning Point Window (days)", 5, 90, 30, step=5)
 
-# 분석 범위 제한
+# 방법: 변동률 기반 분석
+use_pct_change = True
+
+# 발안 범위 경계하기
 df = df[(df["Date"] >= pd.to_datetime(start_date)) & (df["Date"] <= pd.to_datetime(end_date))].copy()
 
-# LOESS 스무딩
+# LOESS 스무디드
 smoothed = lowess(df['Rate'], df['Date'], frac=frac)
 smoothed_dates = pd.to_datetime(smoothed[:, 0])
 smoothed_values = smoothed[:, 1]
@@ -87,7 +89,7 @@ def find_turning_points(values, dates, candidate_idxs, window):
 
 peak_idxs, trough_idxs = find_turning_points(smoothed_values, smoothed_dates, candidate_idxs, window)
 
-# 전환점 시각화
+# 실검 차트
 st.title(f"{selected_maturity} CMT Rate Turning Point Analyzer")
 fig, ax = plt.subplots(figsize=(14, 6))
 ax.plot(df['Date'], df['Rate'], label='Raw Rate', alpha=0.4)
@@ -98,30 +100,30 @@ ax.legend()
 ax.grid(True)
 st.pyplot(fig)
 
-# 분석 함수
+# 분석 함수 (변동률 기준)
 def analyze_segment(df, dates, window):
     rows = []
     for dt in dates:
         seg = df[(df["Date"] <= dt) & (df["Date"] > dt - pd.Timedelta(days=window))]
         if len(seg) < 2:
             continue
-        diff = seg["Rate"].diff().dropna()
+        returns = seg["Rate"].pct_change().dropna()
         rows.append({
             "Turning Point": dt.date(),
             "Start Date": seg["Date"].min().date(),
             "End Date": seg["Date"].max().date(),
-            "Mean Rate": seg["Rate"].mean(),
-            "Std Dev": seg["Rate"].std(),
-            "Rate Change": seg["Rate"].iloc[-1] - seg["Rate"].iloc[0],
-            "Max Daily Change": diff.max(),
-            "Min Daily Change": diff.min()
+            "Mean Return": returns.mean(),
+            "Std Return": returns.std(),
+            "Total Return": (seg["Rate"].iloc[-1] - seg["Rate"].iloc[0]) / seg["Rate"].iloc[0],
+            "Max Daily Return": returns.max(),
+            "Min Daily Return": returns.min()
         })
     return pd.DataFrame(rows)
 
 peak_df = analyze_segment(df, slope_dates[peak_idxs], window)
 trough_df = analyze_segment(df, slope_dates[trough_idxs], window)
 
-# ✅ Control 구간 분석
+# Control 구간
 exclude_dates = set()
 for idx in peak_idxs + trough_idxs:
     ref = slope_dates[idx]
@@ -134,38 +136,40 @@ control_df.reset_index(drop=True, inplace=True)
 rolling_stats = []
 for i in range(len(control_df) - window):
     sub = control_df.iloc[i:i+window]
-    changes = sub["Rate"].diff().dropna()
+    returns = sub["Rate"].pct_change().dropna()
     rolling_stats.append({
         "Window Start": sub["Date"].iloc[0].date(),
         "Window End": sub["Date"].iloc[-1].date(),
-        "Mean Rate": sub["Rate"].mean(),
-        "Std Dev": sub["Rate"].std(),
-        "Rate Change": sub["Rate"].iloc[-1] - sub["Rate"].iloc[0],
-        "Max Daily Change": changes.max(),
-        "Min Daily Change": changes.min()
+        "Mean Return": returns.mean(),
+        "Std Return": returns.std(),
+        "Total Return": (sub["Rate"].iloc[-1] - sub["Rate"].iloc[0]) / sub["Rate"].iloc[0],
+        "Max Daily Return": returns.max(),
+        "Min Daily Return": returns.min()
     })
 
 control_rolling_df = pd.DataFrame(rolling_stats)
 
-# ✅ 테이블 및 다운로드
-st.markdown("### 📋 Peak Analysis")
+# 테이블 보조
+st.markdown("### 피크 분석")
 st.dataframe(peak_df)
 st.download_button("Download Peak Stats", data=peak_df.to_csv(index=False), file_name="peak_stats.csv")
 
-st.markdown("### 📋 Trough Analysis")
+st.markdown("### 트러프 분석")
 st.dataframe(trough_df)
 st.download_button("Download Trough Stats", data=trough_df.to_csv(index=False), file_name="trough_stats.csv")
 
-st.markdown("### 📋 Control Period (Non-Turning Points)")
+st.markdown("### 커트롤 구간")
 st.dataframe(control_rolling_df)
 st.download_button("Download Control Period Stats", data=control_rolling_df.to_csv(index=False), file_name="control_stats.csv")
 
-# ✅ 통계 비교 함수
+# 통계 비교
+features = ["Mean Return", "Std Return", "Total Return"]
+
 def compare_groups(label, a_df, b_df):
     if not a_df.empty and not b_df.empty:
-        t_stat, p_val = ttest_ind(a_df["Rate Change"].dropna(), b_df["Rate Change"].dropna(), equal_var=False)
+        t_stat, p_val = ttest_ind(a_df["Total Return"].dropna(), b_df["Total Return"].dropna(), equal_var=False)
         st.write(f"#### {label} vs Control")
-        st.write(f"Mean: {a_df['Rate Change'].mean():.4f} vs {b_df['Rate Change'].mean():.4f}")
+        st.write(f"Mean: {a_df['Total Return'].mean():.4%} vs {b_df['Total Return'].mean():.4%}")
         st.write(f"T-test p-value: {p_val:.4f}")
         if p_val < 0.05:
             st.success("Significant difference.")
@@ -175,50 +179,11 @@ def compare_groups(label, a_df, b_df):
 compare_groups("Peak", peak_df, control_rolling_df)
 compare_groups("Trough", trough_df, control_rolling_df)
 
-# ✅ 분포 시각화
-st.markdown("### 📊 Distribution of Rate Changes")
+# 가장 그리고싶은 내용은 kdeplot 방식
+st.markdown("### 분포변화")
 fig2, ax2 = plt.subplots()
-sns.kdeplot(peak_df["Rate Change"], label="Peak", fill=True, ax=ax2)
-sns.kdeplot(trough_df["Rate Change"], label="Trough", fill=True, ax=ax2)
-sns.kdeplot(control_rolling_df["Rate Change"], label="Control", fill=True, ax=ax2)
+sns.kdeplot(peak_df["Total Return"], label="Peak", fill=True, ax=ax2)
+sns.kdeplot(trough_df["Total Return"], label="Trough", fill=True, ax=ax2)
+sns.kdeplot(control_rolling_df["Total Return"], label="Control", fill=True, ax=ax2)
 ax2.legend()
 st.pyplot(fig2)
-
-
-# ✅ 최신 기간 비교 분석
-latest_date = df["Date"].max()
-latest_segment = df[df["Date"] > latest_date - pd.Timedelta(days=window)].copy()
-if len(latest_segment) >= 2:
-    latest_change = latest_segment["Rate"].iloc[-1] - latest_segment["Rate"].iloc[0]
-    latest_std = latest_segment["Rate"].std()
-    latest_diff = latest_segment["Rate"].diff().dropna()
-    latest_summary = pd.DataFrame([{
-        "Mean Rate": latest_segment["Rate"].mean(),
-        "Std Dev": latest_std,
-        "Rate Change": latest_change,
-        "Max Daily Change": latest_diff.max(),
-        "Min Daily Change": latest_diff.min()
-    }])
-
-    st.markdown("### 🕒 Latest Period Stats")
-    st.dataframe(latest_summary)
-
-    # 거리 측정
-    def get_mean_distance(latest_summary, ref_df):
-        features = ["Mean Rate", "Std Dev", "Rate Change", "Max Daily Change", "Min Daily Change"]
-        distances = pairwise_distances(latest_summary[features], ref_df[features], metric="euclidean")
-        return distances.mean()
-
-    distances = {
-        "Peak": get_mean_distance(latest_summary, peak_df),
-        "Trough": get_mean_distance(latest_summary, trough_df),
-        "Control": get_mean_distance(latest_summary, control_rolling_df),
-    }
-
-    best_match = min(distances, key=distances.get)
-
-    st.markdown("### 🧠 Similarity Analysis")
-    st.write("Most similar group to the latest period:", f"**{best_match}**")
-    st.write(distances)
-else:
-    st.info("Not enough recent data for latest comparison.")
