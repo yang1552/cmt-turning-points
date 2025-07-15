@@ -119,15 +119,13 @@ st.markdown("""
 - **Window Size**: 전환점이 진짜인지 확인하기 위해 앞뒤 며칠을 비교할지 설정합니다  
 """)
 
-def get_surrounding_data(idx_list, smoothed_dates, smoothed_values, window=30):
+def get_surrounding_data(idx_list, smoothed_dates, smoothed_values, window):
     rows = []
     n = len(smoothed_values)
     for idx in idx_list:
-        # 현재 전환점 날짜 및 값
         center_date = smoothed_dates[idx].date()
         center_value = smoothed_values[idx]
 
-        # 30개 이전과 이후 인덱스 계산
         prev_idx = max(0, idx - window)
         next_idx = min(n - 1, idx + window)
 
@@ -147,6 +145,9 @@ def get_surrounding_data(idx_list, smoothed_dates, smoothed_values, window=30):
         })
     return rows
 
+# Peak, Trough 데이터 생성 시 window 슬라이더 값 전달
+peak_data = get_surrounding_data(peak_idxs, smoothed_dates, smoothed_values, window)
+trough_data = get_surrounding_data(trough_idxs, smoothed_dates, smoothed_values, window)
 # Peak 테이블 생성
 peak_data = get_surrounding_data(peak_idxs, smoothed_dates, smoothed_values, window=30)
 # Through 테이블 생성
