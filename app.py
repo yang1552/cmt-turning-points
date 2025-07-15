@@ -182,3 +182,42 @@ sns.kdeplot(trough_df["Rate Change"], label="Trough", fill=True, ax=ax2)
 sns.kdeplot(control_rolling_df["Rate Change"], label="Control", fill=True, ax=ax2)
 ax2.legend()
 st.pyplot(fig2)
+
+
+# ✅ 최신 기간 비교 분석
+latest_date = df["Date"].max()
+latest_segment = df[df["Date"] > latest_date - pd.Timedelta(days=window)].copy()
+if len(latest_segment) >= 2:
+    latest_change = latest_segment["Rate"].iloc[-1] - latest_segment["Rate"].iloc[0]
+    latest_std = latest_segment["Rate"].std()
+    latest_diff = latest_segment["Rate"].diff().dropna()
+    latest_summary = pd.DataFrame([{
+        "Mean Rate": latest_segment["Rate"].mean(),
+        "Std Dev": latest_std,
+        "Rate Change": latest_change,
+        "Max Daily Change": latest_diff.max(),
+        "Min Daily Change": latest_diff.min()
+    }])
+
+    st.markdown("### 🕒 Latest Period Stats")
+    st.dataframe(latest_summary)
+
+    # 거리 측정
+    def get_mean_distance(latest_summary, ref_df):
+        features = ["Mean Rate", "Std Dev", "Rate Change", "Max Daily Change", "Min Daily Change"]
+        distances = pairwise_distances(latest_summary[features], ref_df[features], metric="euclidean")
+        return distances.mean()
+
+    distances = {
+        "Peak": get_mean_distance(latest_summary, peak_df),
+        "Trough": get_mean_distance(latest_summary, trough_df),
+        "Control": get_mean_distance(latest_summary, control_rolling_df),
+    }
+
+    best_match = min(distances, key=distances.get)
+
+    st.markdown("### 🧠 Similarity Analysis")
+    st.write("Most similar group to the latest period:", f"**{best_match}**")
+    st.write(distances)
+else:
+    st.info("Not enough recent data for latest comparison.")
