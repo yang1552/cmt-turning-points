@@ -61,7 +61,7 @@ if start_date > end_date:
     st.stop()
 
 # 사용자 입력 파라미터
-frac = st.sidebar.slider("LOESS Smoothing (frac)", 0.001, 0.2, 0.01, step=0.005)
+frac = st.sidebar.slider("LOESS Smoothing (frac)", 0.001, 0.2, 0.05, step=0.005)
 threshold = st.sidebar.slider("Slope Threshold", 0.0001, 0.02, 0.005, step=0.0005)
 window = st.sidebar.slider("Turning Point Window (days)", 5, 90, 30, step=5)
 
